@@ -1,6 +1,6 @@
 # Importing essential libraries and modules
 
-from flask import Flask, render_template, request, Markup
+from flask import Flask, render_template, request, Markup, jsonify
 import numpy as np
 import pandas as pd
 from utils.disease import disease_dic
@@ -164,45 +164,39 @@ def fertilizer_recommendation():
 
 # render crop recommendation result page
 
-
-@ app.route('/crop-predict', methods=['POST'])
+@app.route('/crop-predict', methods=['POST'])
 def crop_prediction():
-    title = 'Harvestify - Crop Recommendation'
-
     if request.method == 'POST':
         N = int(request.form['nitrogen'])
         P = int(request.form['phosphorous'])
         K = int(request.form['pottasium'])
         ph = float(request.form['ph'])
         rainfall = float(request.form['rainfall'])
-
-        # state = request.form.get("stt")
         city = request.form.get("city")
 
-        if weather_fetch(city) != None:
+        if weather_fetch(city) is not None:
             temperature, humidity = weather_fetch(city)
             data = np.array([[N, P, K, temperature, humidity, ph, rainfall]])
             my_prediction = crop_recommendation_model.predict(data)
             final_prediction = my_prediction[0]
 
-            return render_template('crop-result.html', prediction=final_prediction, title=title)
+            return jsonify({
+                "success": True,
+                "prediction": final_prediction
+            })
 
         else:
+            return jsonify({
+                "success": False,
+                "message": "Weather data not found. Please try again."
+            })
 
-            return render_template('try_again.html', title=title)
-
-# render fertilizer recommendation result page
-
-
-@ app.route('/fertilizer-predict', methods=['POST'])
+@app.route('/fertilizer-predict', methods=['POST'])
 def fert_recommend():
-    title = 'Harvestify - Fertilizer Suggestion'
-
     crop_name = str(request.form['cropname'])
     N = int(request.form['nitrogen'])
     P = int(request.form['phosphorous'])
     K = int(request.form['pottasium'])
-    # ph = float(request.form['ph'])
 
     df = pd.read_csv('Data/fertilizer.csv')
 
@@ -215,50 +209,50 @@ def fert_recommend():
     k = kr - K
     temp = {abs(n): "N", abs(p): "P", abs(k): "K"}
     max_value = temp[max(temp.keys())]
+
     if max_value == "N":
-        if n < 0:
-            key = 'NHigh'
-        else:
-            key = "Nlow"
+        key = 'NHigh' if n < 0 else "Nlow"
     elif max_value == "P":
-        if p < 0:
-            key = 'PHigh'
-        else:
-            key = "Plow"
+        key = 'PHigh' if p < 0 else "Plow"
     else:
-        if k < 0:
-            key = 'KHigh'
-        else:
-            key = "Klow"
+        key = 'KHigh' if k < 0 else "Klow"
 
-    response = Markup(str(fertilizer_dic[key]))
+    response = fertilizer_dic[key]
 
-    return render_template('fertilizer-result.html', recommendation=response, title=title)
+    return jsonify({
+        "success": True,
+        "recommendation": response
+    })
 
-# render disease prediction result page
-
-
-@app.route('/disease-predict', methods=['GET', 'POST'])
+@app.route('/disease-predict', methods=['POST'])
 def disease_prediction():
-    title = 'Harvestify - Disease Detection'
+    if 'file' not in request.files:
+        return jsonify({
+            "success": False,
+            "message": "No file uploaded"
+        })
 
-    if request.method == 'POST':
-        if 'file' not in request.files:
-            return redirect(request.url)
-        file = request.files.get('file')
-        if not file:
-            return render_template('disease.html', title=title)
-        try:
-            img = file.read()
+    file = request.files.get('file')
+    if not file:
+        return jsonify({
+            "success": False,
+            "message": "Invalid file"
+        })
 
-            prediction = predict_image(img)
+    try:
+        img = file.read()
+        prediction = predict_image(img)
+        response = disease_dic[prediction]
 
-            prediction = Markup(str(disease_dic[prediction]))
-            return render_template('disease-result.html', prediction=prediction, title=title)
-        except:
-            pass
-    return render_template('disease.html', title=title)
-
+        return jsonify({
+            "success": True,
+            "prediction": response
+        })
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "message": str(e)
+        })
 
 # ===============================================================================================
 if __name__ == '__main__':
